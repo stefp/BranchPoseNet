@@ -17,15 +17,6 @@ from ultralytics import YOLO
 
 ####################################################################################################################################
 # Define custom functions
-def list_las_laz_files(path):
-    """ List all files with .las or .laz extension in the given directory. """
-    files = []
-    for file in os.listdir(path):
-        if file.endswith(".las") or file.endswith(".laz"):
-            files.append(file)
-    return files
-
-
 def rotate_point_cloud(point_cloud, angle_degrees, center_point):
     """
     Rotate the point cloud around a center point by a given angle in degrees.
@@ -49,35 +40,56 @@ def slice_tree_center_thick_slices(point_cloud, slice_thickness=10):
     y_slice = point_cloud[y_slice_mask]
     return x_slice, y_slice
 
-def plot_to_image(figure):
+def plot_to_image(figure, dpi):
     """
     Converts the matplotlib plot specified by 'figure' to a PNG image and
-    returns it as a numpy array.
+    returns it as a numpy array, setting the resolution with a high DPI.
     """
     buf = io.BytesIO()
-    figure.savefig(buf, format='png', bbox_inches='tight', pad_inches=0)
+    figure.savefig(buf, format='png', bbox_inches='tight', pad_inches=0, dpi=dpi)
     plt.close(figure)
     buf.seek(0)
     image = Image.open(buf)
     return np.array(image)
 
-def plot_section_as_image_with_alpha(slice_data, xy_limits, z_low, z_high, alpha=0.3):
+def plot_section_as_image_with_alpha(slice_data, z_low, z_high, alpha=0.3, output_size=(1000, 1000), dpi=100):
     """
     Create a figure and plot the slice_data with alpha transparency.
+    Dynamically adjusts plot limits based on the data and resizes the output image to a square format.
     """
-    fig, ax = plt.subplots(figsize=(5, 5))
-    ax.scatter(slice_data[:, 0], slice_data[:, 2], s=1, color='black', alpha=alpha)
-    ax.set_aspect('equal')
-    ax.set_xlim(xy_limits[0], xy_limits[1])
-    ax.set_ylim(z_low, z_high)
+    if slice_data.size == 0:
+        return None  # Return None if there are no data points to plot.
+
+    # Determine aspect ratio and figure size
+    buffer = 0 # Add a buffer around data extents
+    x_min, x_max = np.min(slice_data[:, 0]) - buffer, np.max(slice_data[:, 0]) + buffer
+    y_min, y_max = np.min(slice_data[:, 2]) - buffer, np.max(slice_data[:, 2]) + buffer
+
+    # Dynamically adjust xlim and ylim to include all points and maintain real tree dimensions
+    x_range = x_max - x_min
+    y_range = z_high - z_low  # This should be close to section_height if properly sliced
+
+    # Determine the scale factor to use for x and y to maintain aspect ratio
+    if x_range > y_range:
+        scale_factor = x_range / y_range
+        fig_width, fig_height = 10 * scale_factor, 10
+    else:
+        scale_factor = y_range / x_range
+        fig_width, fig_height = 10, 10 * scale_factor
+
+    fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+    ax.scatter(slice_data[:, 0], slice_data[:, 2], s=3, color='black', alpha=alpha, edgecolors='none')
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_min, y_max)
+    ax.set_aspect('auto')  # 'auto' allows free aspect ratio that adjusts to specified limits
+
     ax.axis('off')
     for spine in ax.spines.values():
         spine.set_visible(False)
     ax.set_xticks([])
     ax.set_yticks([])
-    ax.xaxis.set_major_formatter(plt.NullFormatter())
-    ax.yaxis.set_major_formatter(plt.NullFormatter())
-    return plot_to_image(fig)
+
+    return plot_to_image(fig, dpi)
     
 def convert_sections_to_images(point_cloud, section_height, slice_thickness, tree_center, bottom_height, output_dir, base_filename):
     max_height =  np.max(point_cloud[:, 2])-bottom_height
@@ -121,7 +133,7 @@ def convert_sections_to_images(point_cloud, section_height, slice_thickness, tre
 
         for slice_data, slice_name in zip([x_section_slice, y_section_slice, x45_section_slice, y45_section_slice],
                                           ['x', 'y', 'x45', 'y45']):
-            img_array = plot_section_as_image_with_alpha(slice_data, plot_limits, z_low, z_high)
+            img_array = plot_section_as_image_with_alpha(slice_data, z_low, z_high, dpi=100)
             
             # Metadata for filename
             min_x_or_y = np.min(slice_data[:, 0 if slice_name in ['x', 'x45'] else 1])
@@ -174,10 +186,7 @@ def process_file(text_file_path, img_width, img_height, x_min, x_max, z_min, z_m
 
             real_world_data.append((confidence_p1, world_px1, world_pz2, confidence_p2, world_px2, world_pz2,confidence_p3, world_px3, world_pz3))
     return real_world_data
-    
-    
-####################################################################################################################################
-# compute branch angle at the whorl
+
 # Function to calculate the angle at p2 formed by p1 and p3
 def calculate_angle_at_p2(px1, pz1, px2, pz2, px3, pz3):
     # Construct vectors from p2 to p1 and p2 to p3
@@ -198,13 +207,13 @@ def calculate_angle_at_p2(px1, pz1, px2, pz2, px3, pz3):
 # Function to calculate Euclidean distance
 def calculate_distance(px1, pz1, px2, pz2):
     return np.sqrt((px1 - px2) ** 2 + (pz1 - pz2) ** 2)
-    
+
 # function to process each tree and obtain the detected whorls
-def pose_detection_tree(treeID, trees,non_tree, dir_root, my_model, min_dist_whorls=0.25):
+def pose_detection_tree(treeID, trees,non_tree, dir_root, my_model, dir_pred, min_dist_whorls=0.24):
     # skip if treeID ==255
     if treeID == 0:
         return None  # Skip if treeID is 0
-    dir_pred= dir_root+"/pred_temp"
+
     # Folder path containing  the text files
     dir_temp_imgs=dir_pred+"/orig_imgs"
     if not os.path.exists(dir_temp_imgs):
@@ -229,28 +238,29 @@ def pose_detection_tree(treeID, trees,non_tree, dir_root, my_model, min_dist_who
     # compute tree bottom (will be used later)
     bottom_point= one_tree_np[one_tree_np[:,2]==np.min(one_tree_np[:,2])] 
     bottom_height=bottom_point[0,2]
-    # Separate the x, y, and z coordinates
-    xy_coordinates = non_tree[:, :2]  # Extract x and y
-    print(xy_coordinates)
-    print(type(xy_coordinates))
-    z_values = non_tree[:, 2]  # Extract z
+    
+    if len(non_tree)<0:
+        # Separate the x, y, and z coordinates
+        xy_coordinates = non_tree[:, :2]  # Extract x and y
+        #print(xy_coordinates)
+        #print(type(xy_coordinates))
+        z_values = non_tree[:, 2]  # Extract z
+    
+        # Create a KDTree for efficient spatial search
+        KDtree = cKDTree(xy_coordinates)
+        
+        # Given point coordinates (x, y)
+        x, y = bottom_point[0,0], bottom_point[0,1]
+        #print(type(bottom_point[0,0]))
+        #print([x, y])
+        #print(KDtree)
+        # Find the nearest point
+        _, index = KDtree.query([x, y], k=1)
+        
+        # Extract the z value of the nearest point
+        bottom_height = z_values[index]
+    
 
-    # Create a KDTree for efficient spatial search
-    KDtree = cKDTree(xy_coordinates)
-    
-    # Given point coordinates (x, y)
-    x, y = bottom_point[0,0], bottom_point[0,1]
-    print(type(bottom_point[0,0]))
-    print([x, y])
-    print(KDtree)
-    # Find the nearest point
-    _, index = KDtree.query([x, y], k=1)
-    
-    # Extract the z value of the nearest point
-    bottom_height = z_values[index]
-    
-
-    ####################################################################################################
     ## Create images from point clouds
     process_point_cloud(one_tree_np, dir_orig_imgs_tree,bottom_height, 'img_')
 
@@ -259,7 +269,7 @@ def pose_detection_tree(treeID, trees,non_tree, dir_root, my_model, min_dist_who
     ####################################################################################################################################
     ## Predict on new data
     model=YOLO(my_model)
-    model.predict(source=dir_orig_imgs_tree,conf=0.25, imgsz=640, save=True, save_txt=True, project=dir_pred_out, name=str(round(treeID)))  # no arguments needed, dataset and settings remembered
+    model.predict(source=dir_orig_imgs_tree,conf=0.3, imgsz=1000, save=True, save_txt=True, project=dir_pred_out, name=str(round(treeID)))  # no arguments needed, dataset and settings remembered
 
 
     
@@ -268,7 +278,7 @@ def pose_detection_tree(treeID, trees,non_tree, dir_root, my_model, min_dist_who
     
     # List all text files in the folder
     text_files = [f for f in os.listdir(dir_labels) if f.endswith('.txt')]
-    print(dir_labels)
+    #print(dir_labels)
     # Process each text file
     all_data = []
     for text_file in text_files:
@@ -288,7 +298,7 @@ def pose_detection_tree(treeID, trees,non_tree, dir_root, my_model, min_dist_who
         if match:
             x_min, x_max, z_min, z_max = map(float, match.groups())
             #x_min, x_max, z_min, z_max = map(float, re.findall(r"min(-?\d+\.\d+)_max(-?\d+\.\d+)_zmin(-?\d+\.\d+)_zmax(-?\d+\.\d+)", text_file)[0])
-            print(x_min)
+            #print(x_min)
 
         else:
             x_min, x_max, z_min, z_max = map(float, re.findall(r"min(\d+\.\d+)_max(\d+\.\d+)_zmin(\d+\.\d+)_zmax(\d+\.\d+)", text_file)[0])
@@ -308,12 +318,13 @@ def pose_detection_tree(treeID, trees,non_tree, dir_root, my_model, min_dist_who
     # Applying the functions to the DataFrame
     df_all_sorted['branch_opening_angle'] = df_all_sorted.apply(lambda row: calculate_angle_at_p2(row['world_px1'], row['world_pz1'],row['world_px2'], row['world_pz2'],row['world_px3'], row['world_pz3']), axis=1)
     #df_all_sorted['branch_opening_angle']=180-df_all_sorted['branch_opening_angle']
-    df_all_sorted['branch_length_p1_p2'] = df_all_sorted.apply(lambda row: calculate_distance(row['world_px1'], row['world_pz1'], row['world_px2'], row['world_pz2']), axis=1)
+    df_all_sorted['branch_length_p1_p2'] = df_all_sorted.apply(lambda row: calculate_distance(row['world_px1'], row['world_pz1'], row['world_px3'], row['world_pz3']), axis=1)
     df_all_sorted['branch_length_p3_p2'] = df_all_sorted.apply(lambda row: calculate_distance(row['world_px3'], row['world_pz3'], row['world_px2'], row['world_pz2']), axis=1)
-    
+    #df_all_sorted['branch_length_p3_p1'] = df_all_sorted.apply(lambda row: calculate_distance(row['world_px3'], row['world_pz3'], row['world_px1'], row['world_pz1']), axis=1)
+
     # add tree top and tree bottom points to the sorted dataframe
     df_all_sorted.loc[len(df_all_sorted)] = [0, 0,0,1,top_point[0,0], top_height,0,0,0,0,0,0,0,0 ]
-    df_all_sorted.loc[len(df_all_sorted)] = [0, 0,0,1,bottom_point[0,0], bottom_height,0,0,0,0,0,0,0,0 ]
+    #df_all_sorted.loc[len(df_all_sorted)] = [0, 0,0,1,bottom_point[0,0], bottom_height,0,0,0,0,0,0,0,0 ]
     
     # re-sort the dataframe
     df_all_sorted = df_all_sorted.sort_values(by='world_pz2')
@@ -322,7 +333,7 @@ def pose_detection_tree(treeID, trees,non_tree, dir_root, my_model, min_dist_who
     
     ####################################################################################################################################
     # Cleanup
-    # subset to select only most confident predictions within each 5 cm interval
+    # subset to select only most confident predictions within each "min_dist_whorls" cm interval
     # Now, let's iterate through each row and select the one with the largest probability
     # if consecutive rows are closer than 0.05 in Z values.
     selected_rows = []
@@ -351,16 +362,18 @@ def pose_detection_tree(treeID, trees,non_tree, dir_root, my_model, min_dist_who
     
     # Calculating the average branch length
     df_selected['average_branch_length'] = df_selected[['branch_length_p1_p2', 'branch_length_p3_p2']].mean(axis=1)
-    
+    #df_selected['crown_diam'] = df_selected[['branch_length_p3_p1', 'branch_length_p3_p2']].max(axis=1)
+
     
     # Now, replace values greater than 10 with 0 in both columns
     df_selected['max_branch_length'] = df_selected['max_branch_length'].apply(lambda x: 0 if x > 10 else x)
     df_selected['average_branch_length'] = df_selected['average_branch_length'].apply(lambda x: 0 if x > 10 else x)
-    
+    #df_selected['crown_diam'] = df_selected['crown_diam'].apply(lambda x: 0 if x > 10 else x)
+
     
     ####################################################################################################################################
     ## Create pointcloud result
-    whorls_pc= df_selected[['world_px2','world_pz2','branch_opening_angle','max_branch_length','average_branch_length']]
+    whorls_pc= df_selected[['world_px2','world_pz2','confidence_p2','branch_opening_angle','max_branch_length','average_branch_length']]
     whorls_pc['x']=top_point[0,0]
     whorls_pc['y']=top_point[0,1]
     
@@ -373,55 +386,3 @@ def pose_detection_tree(treeID, trees,non_tree, dir_root, my_model, min_dist_who
 
     # For demonstration, returning a simple dictionary. This should be replaced with actual processing results
     return {'treeID': treeID, 'result': df_selected, 'whorl_pc':whorls_pc}  # Replace with actual result
-
-
-
-def create_initial_json_file(file_path):
-    """
-    Creates an initial JSON file with a basic structure for storing multiple trees data.
-
-    :param file_path: The path where the JSON file will be saved.
-    """
-    # Initial JSON structure
-    initial_data = {
-        "basic_info": {
-            "date": "your_date_here",
-            "file": "your_file_name_here",
-            "id": "your_id_here"
-        },
-        "geometry": {
-            "type": "Point",
-            "coordinates": [0, 0]  # Replace with actual coordinates
-        },
-        "properties": {
-            "data": [
-                # Add data entries as needed
-            ],
-            "measurements": {
-                "height": 0,  # Replace with actual height
-                "result": {
-                    # Add the result data here
-                },
-                "whorl_pc": {
-                    # Add the whorl_pc data here
-                }
-            },
-            "additional_measurement_info": {
-                # Add additional measurement information
-            },
-            "measurements_metadata": {
-                # Add measurements metadata
-            },
-            "source_and_species": {
-                # Add source and species information
-            }
-        }
-    }
-    
-    # Write the initial data to the JSON file
-    with open(file_path, 'w') as file:
-        json.dump(initial_data, file, indent=4)
-
-    print(f"Initial JSON file created at {file_path}")
-
-
