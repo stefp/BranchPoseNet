@@ -1,1 +1,1 @@
-Download the model weights from this URL: 
+Download (https://drive.google.com/file/d/1KMaLhx57h-MCjBvJnMIouaw6YKC_WGKd/view?usp=sharing) the folder where the trained model weights are stored and unzip it in the models directory
