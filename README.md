@@ -25,7 +25,9 @@ pip install -r requirements.txt
 
 
 ## 🚀 How to run it for prediction on new data
-In the 'data' folder You can find a demo dataset showing how the data should look like. The *.las or *.laz file should include a treeID and semantic column. These instance and semantic labels can be obtained for example using [ForAINet](https://github.com/bxiang233/ForAINet) or [SegmentAnyTree](https://github.com/SmartForest-no/SegmentAnyTree).
+In the 'data' folder You can find a demo dataset showing how the data should look like. The *.las or *.laz file should include a treeID and semantic column. These instance and semantic labels can be obtained for example using [ForAINet](https://github.com/bxiang233/ForAINet) or [SegmentAnyTree](https://github.com/SmartForest-no/SegmentAnyTree). 
+
+For predicting on your own data just point the --dir_root to the path to the folder where the point cloud data is stored. 
 
 ### 🖥️ To run using command line (CLI): 
 ```
@@ -33,5 +35,5 @@ python whorl_pose_detect_CLI.py --dir_root data --my_model whorl_pose_nano_1000p
 ```
 
 ### 🎮 Demo version
-The 'demo_predict_whorl_pose' notebook aims at providing a more detailed understanding of the different steps of the method, including some nice plots 
+The 'demo_predict_whorl_pose' notebook aims to provide a more detailed understanding of the different steps of the method, including some nice plots 
 
