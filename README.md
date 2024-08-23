@@ -7,30 +7,30 @@ This is a continuation of the work done by [Puliti et al.(2023)](https://academi
 
 ## 🛠️ Setting it up
 To install, first clone the repo
-'''
+```
 git clone URL
-'''
+```
 
 Create and activate a new conda environment
-'''
+```
 conda create -n whorl_pose_detector python
 conda activate whorl_pose_detector
-'''
+```
 
 Then install the required libraries
-'''
+```
 cd whorl_pose_detector
 pip install -r requirements.txt
-'''
+```
 
 
 ## 🚀 How to run it for prediction on new data
 In the 'data' folder You can find a demo dataset showing how the data should look like. The *.las or *.laz file should include a treeID and semantic column. These instance and semantic labels can be obtained for example using [ForAINet](https://github.com/bxiang233/ForAINet) or [SegmentAnyTree](https://github.com/SmartForest-no/SegmentAnyTree).
 
 ### 🖥️ To run using command line (CLI): 
-'''
+```
 python whorl_pose_detect_CLI.py --dir_root data --my_model whorl_pose_nano_1000px/weights/best.pt --alpha 0.5 --min_internodal_d 0.3 --tree_id_label treeID --semantic_label semantic  
-'''
+```
 
 ### 🎮 Demo version
 The 'demo_predict_whorl_pose' notebook aims at providing a more detailed understanding of the different steps of the method, including some nice plots 
