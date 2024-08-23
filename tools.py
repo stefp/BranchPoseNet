@@ -1,4 +1,4 @@
-# Useful Functions for whorl pose estimation
+# Useful Functions for Whorl Pose Estimation
 
 ####################################################################################################################################
 # Import libraries
@@ -11,15 +11,22 @@ import laspy
 from PIL import Image
 import re
 from scipy.spatial import cKDTree
-
-import ultralytics
 from ultralytics import YOLO
 
 ####################################################################################################################################
 # Define custom functions
+
 def rotate_point_cloud(point_cloud, angle_degrees, center_point):
     """
     Rotate the point cloud around a center point by a given angle in degrees.
+
+    Parameters:
+    - point_cloud: numpy array of shape (n, 3) representing the point cloud (x, y, z coordinates).
+    - angle_degrees: float, the angle by which to rotate the point cloud (in degrees).
+    - center_point: numpy array of shape (2,) representing the center point (x, y) around which to rotate.
+
+    Returns:
+    - numpy array of shape (n, 3) representing the rotated point cloud.
     """
     theta = np.radians(angle_degrees)
     c, s = np.cos(theta), np.sin(theta)
@@ -30,20 +37,33 @@ def rotate_point_cloud(point_cloud, angle_degrees, center_point):
 def slice_tree_center_thick_slices(point_cloud, slice_thickness=10):
     """
     Take thick slices in the X and Y directions, centered around the tree's center.
+
+    Parameters:
+    - point_cloud: numpy array of shape (n, 3) representing the point cloud (x, y, z coordinates).
+    - slice_thickness: float, the thickness of the slices to be taken (in meters).
+
+    Returns:
+    - tuple of two numpy arrays, representing the X and Y direction slices respectively.
     """
-    tree_center = point_cloud[point_cloud[:,2].argmax(), :2]
-    x_slice_mask = (point_cloud[:,0] >= tree_center[0] - slice_thickness/2) & \
-                   (point_cloud[:,0] <= tree_center[0] + slice_thickness/2)
-    y_slice_mask = (point_cloud[:,1] >= tree_center[1] - slice_thickness/2) & \
-                   (point_cloud[:,1] <= tree_center[1] + slice_thickness/2)
+    tree_center = point_cloud[point_cloud[:, 2].argmax(), :2]
+    x_slice_mask = (point_cloud[:, 0] >= tree_center[0] - slice_thickness/2) & \
+                   (point_cloud[:, 0] <= tree_center[0] + slice_thickness/2)
+    y_slice_mask = (point_cloud[:, 1] >= tree_center[1] - slice_thickness/2) & \
+                   (point_cloud[:, 1] <= tree_center[1] + slice_thickness/2)
     x_slice = point_cloud[x_slice_mask]
     y_slice = point_cloud[y_slice_mask]
     return x_slice, y_slice
 
 def plot_to_image(figure, dpi):
     """
-    Converts the matplotlib plot specified by 'figure' to a PNG image and
-    returns it as a numpy array, setting the resolution with a high DPI.
+    Converts a Matplotlib plot specified by 'figure' to a PNG image and returns it as a numpy array.
+
+    Parameters:
+    - figure: Matplotlib figure object.
+    - dpi: int, the resolution in dots per inch.
+
+    Returns:
+    - numpy array representing the image.
     """
     buf = io.BytesIO()
     figure.savefig(buf, format='png', bbox_inches='tight', pad_inches=0, dpi=dpi)
@@ -54,22 +74,29 @@ def plot_to_image(figure, dpi):
 
 def plot_section_as_image_with_alpha(slice_data, z_low, z_high, alpha=0.3, output_size=(1000, 1000), dpi=100):
     """
-    Create a figure and plot the slice_data with alpha transparency.
-    Dynamically adjusts plot limits based on the data and resizes the output image to a square format.
+    Plot the slice data with alpha transparency and return it as an image array.
+
+    Parameters:
+    - slice_data: numpy array of shape (n, 3) representing the slice data (x, y, z coordinates).
+    - z_low: float, the lower bound of the Z coordinate.
+    - z_high: float, the upper bound of the Z coordinate.
+    - alpha: float, the alpha transparency value for the points.
+    - output_size: tuple of ints, the size of the output image (width, height).
+    - dpi: int, the resolution in dots per inch.
+
+    Returns:
+    - numpy array representing the image, or None if no data points are provided.
     """
     if slice_data.size == 0:
-        return None  # Return None if there are no data points to plot.
+        return None
 
-    # Determine aspect ratio and figure size
-    buffer = 0 # Add a buffer around data extents
+    buffer = 0
     x_min, x_max = np.min(slice_data[:, 0]) - buffer, np.max(slice_data[:, 0]) + buffer
     y_min, y_max = np.min(slice_data[:, 2]) - buffer, np.max(slice_data[:, 2]) + buffer
 
-    # Dynamically adjust xlim and ylim to include all points and maintain real tree dimensions
     x_range = x_max - x_min
-    y_range = z_high - z_low  # This should be close to section_height if properly sliced
+    y_range = z_high - z_low
 
-    # Determine the scale factor to use for x and y to maintain aspect ratio
     if x_range > y_range:
         scale_factor = x_range / y_range
         fig_width, fig_height = 10 * scale_factor, 10
@@ -81,7 +108,7 @@ def plot_section_as_image_with_alpha(slice_data, z_low, z_high, alpha=0.3, outpu
     ax.scatter(slice_data[:, 0], slice_data[:, 2], s=3, color='black', alpha=alpha, edgecolors='none')
     ax.set_xlim(x_min, x_max)
     ax.set_ylim(y_min, y_max)
-    ax.set_aspect('auto')  # 'auto' allows free aspect ratio that adjusts to specified limits
+    ax.set_aspect('auto')
 
     ax.axis('off')
     for spine in ax.spines.values():
@@ -90,126 +117,183 @@ def plot_section_as_image_with_alpha(slice_data, z_low, z_high, alpha=0.3, outpu
     ax.set_yticks([])
 
     return plot_to_image(fig, dpi)
-    
+
 def convert_sections_to_images(point_cloud, section_height, slice_thickness, tree_center, bottom_height, output_dir, base_filename):
-    max_height =  np.max(point_cloud[:, 2])-bottom_height
+    """
+    Convert sections of the point cloud into images and save them.
+
+    Parameters:
+    - point_cloud: numpy array of shape (n, 3) representing the point cloud (x, y, z coordinates).
+    - section_height: float, the height of each section to be sliced.
+    - slice_thickness: float, the thickness of the slices.
+    - tree_center: numpy array of shape (2,), the center point (x, y) of the tree.
+    - bottom_height: float, the height of the tree bottom.
+    - output_dir: str, the directory where images will be saved.
+    - base_filename: str, the base name for saved images.
+    """
+    max_height = np.max(point_cloud[:, 2]) - bottom_height
     num_sections = int(np.ceil(max_height / section_height))
 
-    # Normalize point cloud
-    point_cloud[:, 2]=point_cloud[:, 2]-bottom_height
+    point_cloud[:, 2] = point_cloud[:, 2] - bottom_height
 
     for i in range(num_sections):
-        # compute the lower end of the interval
-        z_low=np.float64(0)
-        if i>0:
-            z_low = np.float64(i)*section_height
+        z_low = np.float64(i) * section_height if i > 0 else np.float64(0)
+        z_high = (i + 1) * section_height
 
-        # get upper end of the interval
-        z_high = (i +1) * section_height
-
-        # slice pointcloud
         section_mask = (point_cloud[:, 2] >= z_low) & (point_cloud[:, 2] < z_high)
         section_points = point_cloud[section_mask]
 
-        # skip if there are no points
         if not section_points.size:
             continue
 
-        # if the tree does not fill the frame then modify the lower and upper limits
-        if (np.max(section_points[:, 2])-np.min(section_points[:, 2]))<(section_height-0.5):
+        if (np.max(section_points[:, 2]) - np.min(section_points[:, 2])) < (section_height - 0.5):
             z_high = np.max(section_points[:, 2])
-            z_low= z_high-section_height
-            # slice pointcloud
+            z_low = z_high - section_height
             section_mask = (point_cloud[:, 2] >= z_low) & (point_cloud[:, 2] < z_high)
             section_points = point_cloud[section_mask]
 
-        
         x_section_slice, y_section_slice = slice_tree_center_thick_slices(section_points, slice_thickness)
         rotated_section_points = rotate_point_cloud(section_points, 45, tree_center)
         x45_section_slice, y45_section_slice = slice_tree_center_thick_slices(rotated_section_points, slice_thickness)
 
-        plot_limits = [tree_center[0] - slice_thickness/2, tree_center[0] + slice_thickness/2,
-                       tree_center[1] - slice_thickness/2, tree_center[1] + slice_thickness/2]
-
         for slice_data, slice_name in zip([x_section_slice, y_section_slice, x45_section_slice, y45_section_slice],
                                           ['x', 'y', 'x45', 'y45']):
             img_array = plot_section_as_image_with_alpha(slice_data, z_low, z_high, dpi=100)
-            
-            # Metadata for filename
-            min_x_or_y = np.min(slice_data[:, 0 if slice_name in ['x', 'x45'] else 1])
-            max_x_or_y = np.max(slice_data[:, 0 if slice_name in ['x', 'x45'] else 1])
-            filename = f"{output_dir}/{base_filename}_{slice_name}_section_{i}_min{min_x_or_y:.2f}_max{max_x_or_y:.2f}_zmin{z_low:.2f}_zmax{z_high:.2f}.png"
-            
-            Image.fromarray(img_array).save(filename)
-
+            if img_array is not None:
+                min_x_or_y = np.min(slice_data[:, 0 if slice_name in ['x', 'x45'] else 1])
+                max_x_or_y = np.max(slice_data[:, 0 if slice_name in ['x', 'x45'] else 1])
+                filename = f"{output_dir}/{base_filename}_{slice_name}_section_{i}_min{min_x_or_y:.2f}_max{max_x_or_y:.2f}_zmin{z_low:.2f}_zmax{z_high:.2f}.png"
+                Image.fromarray(img_array).save(filename)
 
 def process_point_cloud(point_cloud, output_directory, bottom_height, base_filename):
-    tree_center = point_cloud[point_cloud[:,2].argmax(), :2]
-    convert_sections_to_images(point_cloud, 10, 10, tree_center,bottom_height, output_directory, base_filename)
+    """
+    Process the point cloud to generate and save sectional images.
 
-# Function to get image size
+    Parameters:
+    - point_cloud: numpy array of shape (n, 3) representing the point cloud (x, y, z coordinates).
+    - output_directory: str, the directory where images will be saved.
+    - bottom_height: float, the height of the tree bottom.
+    - base_filename: str, the base name for saved images.
+    """
+    tree_center = point_cloud[point_cloud[:, 2].argmax(), :2]
+    convert_sections_to_images(point_cloud, 10, 10, tree_center, bottom_height, output_directory, base_filename)
+
 def get_image_size(image_path):
-    with Image.open(image_path) as img:
-        return img.size  # (width, height)
+    """
+    Get the dimensions of an image.
 
-# Function to convert normalized coordinates to real-world coordinates
+    Parameters:
+    - image_path: str, the path to the image file.
+
+    Returns:
+    - tuple of ints representing the image size (width, height).
+    """
+    with Image.open(image_path) as img:
+        return img.size
+
 def convert_to_real_world(px, py, img_width, img_height, x_min, x_max, z_min, z_max):
+    """
+    Convert normalized image coordinates to real-world coordinates.
+
+    Parameters:
+    - px, py: floats, the normalized coordinates in the image.
+    - img_width, img_height: ints, the width and height of the image.
+    - x_min, x_max, z_min, z_max: floats, the real-world bounds for the X and Z coordinates.
+
+    Returns:
+    - tuple of floats representing the real-world coordinates (world_x, world_z).
+    """
     real_x = px * img_width
     real_y = py * img_height
     world_x = real_x / img_width * (x_max - x_min) + x_min
     world_z = real_y / img_height * (z_max - z_min) + z_min
     return world_x, world_z
 
-# Function to process a single file
 def process_file(text_file_path, img_width, img_height, x_min, x_max, z_min, z_max):
+    """
+    Process a text file containing point data and convert coordinates to real-world values.
+
+    Parameters:
+    - text_file_path: str, path to the text file containing the point data.
+    - img_width, img_height: ints, the dimensions of the corresponding image.
+    - x_min, x_max, z_min, z_max: floats, the real-world bounds for the X and Z coordinates.
+
+    Returns:
+    - list of tuples containing the converted real-world coordinates and confidence values.
+    """
     real_world_data = []
     with open(text_file_path, 'r') as file:
         for line in file.readlines():
             parts = line.strip().split()
 
-            # get coordinates and confidence for the three keypoints where
-            # p1: left branch; p2: whorl center; p3: right branch
-            px1 = float(parts[5])
-            py1 = float(parts[6])
-            confidence_p1 = float(parts[7])
-            px2 = float(parts[8])
-            py2 = float(parts[9])
-            confidence_p2 = float(parts[10])
-            px3 = float(parts[11])
-            py3 = float(parts[12])
-            confidence_p3 = float(parts[13])
+            px1, py1, confidence_p1 = float(parts[5]), float(parts[6]), float(parts[7])
+            px2, py2, confidence_p2 = float(parts[8]), float(parts[9]), float(parts[10])
+            px3, py3, confidence_p3 = float(parts[11]), float(parts[12]), float(parts[13])
 
-
-            world_px1, world_pz1 = convert_to_real_world(px1,py1, img_width, img_height, x_min, x_max, z_min, z_max)
+            world_px1, world_pz1 = convert_to_real_world(px1, py1, img_width, img_height, x_min, x_max, z_min, z_max)
             world_px2, world_pz2 = convert_to_real_world(px2, py2, img_width, img_height, x_min, x_max, z_min, z_max)
             world_px3, world_pz3 = convert_to_real_world(px3, py3, img_width, img_height, x_min, x_max, z_min, z_max)
 
-            real_world_data.append((confidence_p1, world_px1, world_pz2, confidence_p2, world_px2, world_pz2,confidence_p3, world_px3, world_pz3))
+            real_world_data.append((confidence_p1, world_px1, world_pz2, confidence_p2, world_px2, world_pz2, confidence_p3, world_px3, world_pz3))
     return real_world_data
 
-# Function to calculate the angle at p2 formed by p1 and p3
 def calculate_angle_at_p2(px1, pz1, px2, pz2, px3, pz3):
-    # Construct vectors from p2 to p1 and p2 to p3
+    """
+    Calculate the angle at point p2 formed by the vectors from p2 to p1 and from p2 to p3.
+
+    Parameters:
+    - px1, pz1: floats, coordinates of point p1.
+    - px2, pz2: floats, coordinates of point p2 (the vertex of the angle).
+    - px3, pz3: floats, coordinates of point p3.
+
+    Returns:
+    - float representing the angle at p2 in degrees.
+    """
     vector_p2_p1 = np.array([px1 - px2, pz1 - pz2])
     vector_p2_p3 = np.array([px3 - px2, pz3 - pz2])
-    # Calculate the dot product and norms of the vectors
+
     dot_product = np.dot(vector_p2_p1, vector_p2_p3)
     norm_p2_p1 = np.linalg.norm(vector_p2_p1)
     norm_p2_p3 = np.linalg.norm(vector_p2_p3)
-    # Calculate the angle in radians and then convert to degrees
+
     angle = np.arccos(np.clip(dot_product / (norm_p2_p1 * norm_p2_p3), -1.0, 1.0))
     angle_degrees = np.degrees(angle)
-    # Check for reflex angle (greater than 180 degrees)
-    if np.cross(vector_p2_p1, vector_p2_p3) < 0:  # using cross product to determine the orientation
+
+    if np.cross(vector_p2_p1, vector_p2_p3) < 0:
         angle_degrees = 360 - angle_degrees
+
     return angle_degrees
 
-# Function to calculate Euclidean distance
 def calculate_distance(px1, pz1, px2, pz2):
+    """
+    Calculate the Euclidean distance between two points.
+
+    Parameters:
+    - px1, pz1: floats, coordinates of the first point.
+    - px2, pz2: floats, coordinates of the second point.
+
+    Returns:
+    - float representing the distance between the two points.
+    """
     return np.sqrt((px1 - px2) ** 2 + (pz1 - pz2) ** 2)
 
-# function to process each tree and obtain the detected whorls
+
 def pose_detection_tree(treeID, trees,non_tree, dir_root, my_model, dir_pred, min_dist_whorls=0.24):
+    """
+    Detect the whorls of a single tree using the YOLOv8 model and post-process the results.
+
+    Parameters:
+    - treeID: int, the unique identifier of the tree.
+    - trees: numpy array, the point cloud data of all trees.
+    - non_tree: numpy array, the point cloud data of non-tree objects.
+    - dir_root: str, the root directory for saving results.
+    - my_model: str, the path to the YOLO model.
+    - dir_pred: str, the directory for saving intermediate predictions.
+    - min_dist_whorls: float, the minimum distance between whorls to remove duplicates (in meters).
+
+    Returns:
+    - dict containing the processed tree results and point cloud data of detected whorls.
+    """
     # skip if treeID ==255
     if treeID == 0:
         return None  # Skip if treeID is 0
