@@ -8,7 +8,7 @@ This is a continuation of the work done by [Puliti et al.(2023)](https://academi
 ## 🛠️ Setting it up
 To install, first clone the repo
 ```
-git clone URL
+git clone https://github.com/stefp/whorl_pose_detector
 ```
 
 Create and activate a new conda environment
