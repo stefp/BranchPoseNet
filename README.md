@@ -8,13 +8,13 @@ This is a continuation of the work done by [Puliti et al.(2023)](https://academi
 ## 🛠️ Setting it up
 To install, first clone the repo
 ```
-git clone https://github.com/stefp/whorl_pose_detector
+git clone https://github.com/stefp/BranchPoseNet
 ```
 
 Create and activate a new conda environment
 ```
-conda create -n whorl_pose_detector python
-conda activate whorl_pose_detector
+conda create -n BranchPoseNet python
+conda activate BranchPoseNet
 ```
 
 Then install the required libraries
