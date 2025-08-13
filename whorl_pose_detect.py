@@ -12,7 +12,7 @@ import concurrent.futures
 import matplotlib
 matplotlib.use('Agg')  # Use Agg backend for non-GUI rendering
 import matplotlib.pyplot as plt
-
+import argparse
 
 import ultralytics
 from ultralytics import YOLO
@@ -24,23 +24,37 @@ from tools import convert_sections_to_images,process_point_cloud,get_image_size
 
 
 ####################################################################################################################################
+# Parse CLI arguments first
+parser = argparse.ArgumentParser()
+parser.add_argument("--dir_root", default="data", help="Path to root folder where .las/.laz files are stored")
+parser.add_argument("--my_model", default="models/whorl_pose_nano_1000px/weights/best.pt", help="Path to YOLO model weights")
+parser.add_argument("--alpha", type=float, default=0.5, help="Alpha value for plotting")
+parser.add_argument("--min_internodal_d", type=float, default=0.3, help="Minimum internodal distance in meters")
+parser.add_argument("--tree_id_label", default="treeID", help="Column name for tree IDs")
+parser.add_argument("--semantic_label", default="semantic", help="Column name for semantic labels")
+args = parser.parse_args()
+
+# ---------------------------------------------------------
+# Default parameters (can be overridden by CLI arguments)
+# ---------------------------------------------------------
+
 # directory to where YOLO temp predictions are stored
-dir_root="data" # path to root folder where .las/.laz files are stored
+dir_root = args.dir_root  # path to root folder where .las/.laz files are stored
 
 # alpha for plotting
-alpha= 0.5
+alpha = args.alpha
 
 # minimum distance between whorls (used to remove duplicates)
-min_internodal_d= 0.3 # in m (it can be set to something like 0.01 to allow the full output to post-process later)
+min_internodal_d = args.min_internodal_d  # in m (can be set to 0.01 to allow full output post-processing later)
 
 # pose model
-my_model="whorl_pose_nano_1000px/weights/best.pt"
+my_model = args.my_model
 
 # label for the column with tree instance unique identifiers
-tree_id_label='treeID' 
+tree_id_label = args.tree_id_label
 
-# label for the column with semantic labels (non required)
-semantic_label='semantic' 
+# label for the column with semantic labels (non-required)
+semantic_label = args.semantic_label
 
 ####################################################################################################################################
 # files_to_process= list_las_laz_files(dir_root)
@@ -145,3 +159,6 @@ for filename in all_files:
     # Cleanup temp files
     import shutil
     shutil.rmtree(dir_pred)
+
+
+
