@@ -259,9 +259,13 @@ def calculate_angle_at_p2(px1, pz1, px2, pz2, px3, pz3):
     angle = np.arccos(np.clip(dot_product / (norm_p2_p1 * norm_p2_p3), -1.0, 1.0))
     angle_degrees = np.degrees(angle)
 
-    if np.cross(vector_p2_p1, vector_p2_p3) < 0:
-        angle_degrees = 360 - angle_degrees
-
+    # NOTE: previously this flipped to a reflex angle (360 - angle_degrees) whenever
+    # np.cross(vector_p2_p1, vector_p2_p3) < 0. That sign only reflects the winding
+    # order of p1 vs p3 around p2 (i.e. which branch tip sits slightly higher/lower),
+    # not whether the opening is physically reflex. Two whorls with near-identical
+    # branch geometry could therefore get angles like 170 vs 190 degrees purely from
+    # noise in keypoint placement. arccos already returns the correct unsigned
+    # opening angle in [0, 180], so we return it directly.
     return angle_degrees
 
 def calculate_distance(px1, pz1, px2, pz2):
@@ -402,7 +406,7 @@ def pose_detection_tree(treeID, trees,non_tree, dir_root, my_model, dir_pred, mi
     # Applying the functions to the DataFrame
     df_all_sorted['branch_opening_angle'] = df_all_sorted.apply(lambda row: calculate_angle_at_p2(row['world_px1'], row['world_pz1'],row['world_px2'], row['world_pz2'],row['world_px3'], row['world_pz3']), axis=1)
     #df_all_sorted['branch_opening_angle']=180-df_all_sorted['branch_opening_angle']
-    df_all_sorted['branch_length_p1_p2'] = df_all_sorted.apply(lambda row: calculate_distance(row['world_px1'], row['world_pz1'], row['world_px3'], row['world_pz3']), axis=1)
+    df_all_sorted['branch_length_p1_p2'] = df_all_sorted.apply(lambda row: calculate_distance(row['world_px1'], row['world_pz1'], row['world_px2'], row['world_pz2']), axis=1)
     df_all_sorted['branch_length_p3_p2'] = df_all_sorted.apply(lambda row: calculate_distance(row['world_px3'], row['world_pz3'], row['world_px2'], row['world_pz2']), axis=1)
     #df_all_sorted['branch_length_p3_p1'] = df_all_sorted.apply(lambda row: calculate_distance(row['world_px3'], row['world_pz3'], row['world_px1'], row['world_pz1']), axis=1)
 
